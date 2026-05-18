@@ -33,6 +33,9 @@ jobs:
       - name: 依存パッケージインストール
         run: pip install -r requirements.txt
 
+      - name: Playwright Chromium インストール
+        run: playwright install chromium --with-deps
+
       - name: 価格スクレイピング実行
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
