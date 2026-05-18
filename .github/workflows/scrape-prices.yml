@@ -1,0 +1,42 @@
+name: 価格自動収集
+
+on:
+  # 毎朝6時・毎夜18時（JST = UTC+9）に自動実行
+  schedule:
+    - cron: "0 21 * * *"  # JST 6:00
+    - cron: "0 9 * * *"   # JST 18:00
+  # 手動実行も可能
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "実行モード (prices / cards / all)"
+        required: false
+        default: "prices"
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: scrapers
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python セットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: scrapers/requirements.txt
+
+      - name: 依存パッケージインストール
+        run: pip install -r requirements.txt
+
+      - name: 価格スクレイピング実行
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          MODE="${{ github.event.inputs.mode || 'prices' }}"
+          python run_all.py --mode "$MODE"

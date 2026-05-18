@@ -1,36 +1,82 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CardMarket AI — トレーディングカード市場分析サイト
 
-## Getting Started
+ポケモン・ワンピース・遊戯王・MTGの価格を毎日自動収集し、高騰・暴落をリアルタイム表示するサービスです。
 
-First, run the development server:
+## 起動方法
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+http://localhost:3000 で確認できます。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## セットアップ手順（初回のみ）
 
-## Learn More
+### 1. Supabase プロジェクト作成
 
-To learn more about Next.js, take a look at the following resources:
+1. [supabase.com](https://supabase.com) でアカウント作成（無料）
+2. 新しいプロジェクトを作成
+3. `Settings > API` からURL・Anon Key・Service Role Keyをコピー
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 2. 環境変数の設定
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+cp .env.local.example .env.local
+```
 
-## Deploy on Vercel
+`.env.local` を開いて、Supabaseの値を貼り付けます。
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 3. データベーステーブル作成
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Supabaseの `SQL Editor` を開き、`supabase/schema.sql` の内容を貼り付けて実行します。
+
+### 4. カードマスターデータ取得（初回）
+
+```bash
+cd scrapers
+pip install -r requirements.txt
+cp .env.example .env
+# .env にSupabaseの値を設定
+
+python run_all.py --mode cards
+```
+
+※ 完了まで数分かかります。
+
+### 5. GitHub Actionsの設定（自動化）
+
+GitHubリポジトリの `Settings > Secrets and variables > Actions` に以下を登録：
+
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+登録後は価格収集が毎朝6時・毎夜18時に自動実行されます。
+
+---
+
+## 技術スタック
+
+| 用途 | 技術 |
+|------|------|
+| フロントエンド | Next.js 14 (App Router) |
+| スタイリング | Tailwind CSS + shadcn/ui |
+| グラフ | Recharts |
+| データベース | Supabase (PostgreSQL) |
+| スクレイパー | Python + requests + BeautifulSoup |
+| 自動実行 | GitHub Actions (cron) |
+| デプロイ | Vercel |
+
+## デプロイ（Vercel）
+
+1. GitHubにリポジトリをプッシュ
+2. [vercel.com](https://vercel.com) でインポート
+3. 環境変数を設定してデプロイ
+
+---
+
+## 免責事項
+
+本サービスの価格情報は参考目的のみです。投資・売買の判断は自己責任でお願いします。
+本サービスは各ゲームメーカーとは無関係のファンサービスです。
