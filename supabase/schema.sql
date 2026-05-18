@@ -88,9 +88,31 @@ join cards c on c.id = l.card_id
 where l.price < w.price
 order by change_rate asc;
 
+-- 価格予測テーブル
+create table if not exists predictions (
+  id           uuid primary key default gen_random_uuid(),
+  card_id      uuid not null references cards(id) on delete cascade,
+  current_price integer not null,
+  pred_1w      integer,
+  pred_1m      integer,
+  pred_1y      integer,
+  change_1w    numeric(6,1),
+  change_1m    numeric(6,1),
+  change_1y    numeric(6,1),
+  confidence   text check (confidence in ('low', 'medium', 'high')) default 'low',
+  data_days    integer default 0,
+  updated_at   timestamptz not null default now(),
+  unique (card_id)
+);
+
+create index if not exists predictions_card_id on predictions(card_id);
+create index if not exists predictions_updated on predictions(updated_at desc);
+
 -- Row Level Security（公開データは全員読み取り可）
 alter table cards enable row level security;
 alter table prices enable row level security;
+
+alter table predictions enable row level security;
 
 do $$ begin
   if not exists (select 1 from pg_policies where tablename = 'cards' and policyname = 'cards are public') then
@@ -98,5 +120,8 @@ do $$ begin
   end if;
   if not exists (select 1 from pg_policies where tablename = 'prices' and policyname = 'prices are public') then
     create policy "prices are public" on prices for select using (true);
+  end if;
+  if not exists (select 1 from pg_policies where tablename = 'predictions' and policyname = 'predictions are public') then
+    create policy "predictions are public" on predictions for select using (true);
   end if;
 end $$;

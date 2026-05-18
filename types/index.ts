@@ -28,6 +28,21 @@ export type CardWithLatestPrice = Card & {
   change_rate: number | null;
 };
 
+export type Prediction = {
+  id: string;
+  card_id: string;
+  current_price: number;
+  pred_1w: number;
+  pred_1m: number;
+  pred_1y: number;
+  change_1w: number;
+  change_1m: number;
+  change_1y: number;
+  confidence: "low" | "medium" | "high";
+  data_days: number;
+  updated_at: string;
+};
+
 export type RankingEntry = {
   card: Card;
   latest_price: number;

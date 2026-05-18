@@ -23,6 +23,15 @@ def run_prices():
             print(f"ERROR scraping {game}: {e}")
     print("=== 価格スクレイピング完了 ===")
 
+    # 価格スクレイピング後に予測を更新
+    print("=== 価格予測更新開始 ===")
+    try:
+        from predictions.predictor import run_predictions
+        run_predictions()
+    except Exception as e:
+        print(f"ERROR running predictions: {e}")
+    print("=== 価格予測更新完了 ===")
+
 
 def run_cards():
     print("=== カードマスター同期開始（日本版）===")

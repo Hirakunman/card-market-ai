@@ -4,6 +4,7 @@ import { Card, Price } from "@/types";
 import { GameBadge } from "@/components/GameBadge";
 import { PriceChange } from "@/components/PriceChange";
 import { PriceChart } from "@/components/PriceChart";
+import { PricePrediction } from "@/components/PricePrediction";
 
 export const revalidate = 3600;
 
@@ -11,6 +12,27 @@ type Params = { id: string };
 
 async function getCard(id: string): Promise<Card | null> {
   const { data } = await supabase.from("cards").select("*").eq("id", id).single();
+  return data;
+}
+
+type Prediction = {
+  current_price: number;
+  pred_1w: number;
+  pred_1m: number;
+  pred_1y: number;
+  change_1w: number;
+  change_1m: number;
+  change_1y: number;
+  confidence: "low" | "medium" | "high";
+  data_days: number;
+};
+
+async function getPrediction(cardId: string): Promise<Prediction | null> {
+  const { data } = await supabase
+    .from("predictions")
+    .select("*")
+    .eq("card_id", cardId)
+    .single();
   return data;
 }
 
@@ -30,7 +52,11 @@ async function getPrices(cardId: string, days = 90): Promise<Price[]> {
 
 export default async function CardDetailPage({ params }: { params: Promise<Params> }) {
   const { id } = await params;
-  const [card, prices] = await Promise.all([getCard(id), getPrices(id)]);
+  const [card, prices, prediction] = await Promise.all([
+    getCard(id),
+    getPrices(id),
+    getPrediction(id),
+  ]);
 
   if (!card) notFound();
 
@@ -101,6 +127,9 @@ export default async function CardDetailPage({ params }: { params: Promise<Param
         </div>
         <PriceChart prices={prices} />
       </div>
+
+      {/* 価格予測 */}
+      <PricePrediction prediction={prediction} />
 
       {/* 自動分析コメント */}
       <div className="rounded-lg border border-[#2a2a2e] bg-[#141416] p-4 space-y-2">
