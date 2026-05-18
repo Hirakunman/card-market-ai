@@ -1,25 +1,48 @@
 import Link from "next/link";
 import { TrendingUp, TrendingDown, Search, BarChart2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { RankingEntry } from "@/types";
 import { GameBadge } from "@/components/GameBadge";
-import { PriceChange } from "@/components/PriceChange";
 
-export const revalidate = 3600; // 1時間ごとに再生成
+export const revalidate = 3600;
 
-async function getTopRankings() {
+type PredEntry = {
+  card_id: string;
+  current_price: number;
+  pred_1m: number;
+  change_1m: number;
+  confidence: string;
+  cards: {
+    id: string;
+    name: string;
+    game: string;
+    set_name: string;
+    image_url: string | null;
+  };
+};
+
+async function getTopPredictions() {
   const [riseRes, fallRes] = await Promise.all([
-    supabase.from("ranking_rise").select("*").limit(5),
-    supabase.from("ranking_fall").select("*").limit(5),
+    supabase
+      .from("predictions")
+      .select("card_id,current_price,pred_1m,change_1m,confidence,cards(id,name,game,set_name,image_url)")
+      .gt("change_1m", 0)
+      .order("change_1m", { ascending: false })
+      .limit(5),
+    supabase
+      .from("predictions")
+      .select("card_id,current_price,pred_1m,change_1m,confidence,cards(id,name,game,set_name,image_url)")
+      .lt("change_1m", 0)
+      .order("change_1m", { ascending: true })
+      .limit(5),
   ]);
   return {
-    rise: (riseRes.data ?? []) as RankingEntry[],
-    fall: (fallRes.data ?? []) as RankingEntry[],
+    rise: (riseRes.data ?? []) as PredEntry[],
+    fall: (fallRes.data ?? []) as PredEntry[],
   };
 }
 
 export default async function HomePage() {
-  const { rise, fall } = await getTopRankings();
+  const { rise, fall } = await getTopPredictions();
 
   return (
     <div className="space-y-12">
@@ -30,7 +53,7 @@ export default async function HomePage() {
         </h1>
         <p className="text-[#9ca3af] max-w-xl mx-auto">
           ポケモン・ワンピース・遊戯王・MTGの価格を毎日自動収集。
-          高騰・暴落をリアルタイムで検知します。
+          AIが1週間後・1ヶ月後・1年後の価格を予測します。
         </p>
         <Link
           href="/search"
@@ -41,19 +64,19 @@ export default async function HomePage() {
         </Link>
       </section>
 
-      {/* ランキング 2カラム */}
+      {/* 予測ランキング 2カラム */}
       <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <RankingCard
-          title="高騰ランキング"
-          subtitle="過去7日間"
+        <PredRankingCard
+          title="高騰予測ランキング"
+          subtitle="1ヶ月後予測"
           icon={<TrendingUp className="w-5 h-5 text-green-400" />}
           entries={rise}
           type="rise"
           href="/ranking/rise"
         />
-        <RankingCard
-          title="暴落ランキング"
-          subtitle="過去7日間"
+        <PredRankingCard
+          title="暴落予測ランキング"
+          subtitle="1ヶ月後予測"
           icon={<TrendingDown className="w-5 h-5 text-red-400" />}
           entries={fall}
           type="fall"
@@ -61,15 +84,12 @@ export default async function HomePage() {
         />
       </section>
 
-      {/* データなし時の説明 */}
       {rise.length === 0 && fall.length === 0 && (
         <div className="rounded-lg border border-[#2a2a2e] bg-[#141416] p-8 text-center space-y-3">
           <BarChart2 className="w-10 h-10 text-[#9ca3af] mx-auto" />
-          <p className="font-medium">まだデータがありません</p>
+          <p className="font-medium">予測データ生成中</p>
           <p className="text-sm text-[#9ca3af]">
-            スクレイパーを実行するとランキングが表示されます。
-            <br />
-            セットアップ手順は <code className="text-blue-400">README.md</code> を参照してください。
+            価格データが蓄積されると予測ランキングが表示されます。
           </p>
         </div>
       )}
@@ -77,7 +97,7 @@ export default async function HomePage() {
   );
 }
 
-function RankingCard({
+function PredRankingCard({
   title,
   subtitle,
   icon,
@@ -88,10 +108,12 @@ function RankingCard({
   title: string;
   subtitle: string;
   icon: React.ReactNode;
-  entries: RankingEntry[];
+  entries: PredEntry[];
   type: "rise" | "fall";
   href: string;
 }) {
+  const accentColor = type === "rise" ? "#22c55e" : "#ef4444";
+
   return (
     <div className="rounded-lg border border-[#2a2a2e] bg-[#141416] overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a2a2e]">
@@ -109,39 +131,46 @@ function RankingCard({
         <p className="p-6 text-sm text-center text-[#9ca3af]">データなし</p>
       ) : (
         <ul className="divide-y divide-[#2a2a2e]">
-          {entries.map((entry, i) => (
-            <li key={entry.card?.id ?? i}>
-              <Link
-                href={`/card/${entry.card?.id}`}
-                className="flex items-center gap-3 px-4 py-3 hover:bg-[#1a1a1e] transition-colors"
-              >
-                <span className="text-sm font-bold text-[#9ca3af] w-5 text-right shrink-0">
-                  {i + 1}
-                </span>
-                {entry.card?.image_url && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={entry.card.image_url}
-                    alt={entry.card.name}
-                    className="w-8 h-11 object-contain rounded shrink-0"
-                  />
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{entry.card?.name}</p>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    {entry.card?.game && <GameBadge game={entry.card.game} />}
-                    <span className="text-xs text-[#9ca3af]">{entry.card?.set_name}</span>
+          {entries.map((entry, i) => {
+            const card = entry.cards;
+            const changeAmt = entry.pred_1m - entry.current_price;
+            return (
+              <li key={entry.card_id}>
+                <Link
+                  href={`/card/${card.id}`}
+                  className="flex items-center gap-3 px-4 py-3 hover:bg-[#1a1a1e] transition-colors"
+                >
+                  <span className="text-sm font-bold text-[#9ca3af] w-5 text-right shrink-0">
+                    {i + 1}
+                  </span>
+                  {card.image_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={card.image_url}
+                      alt={card.name}
+                      className="w-8 h-11 object-contain rounded shrink-0"
+                    />
+                  ) : (
+                    <div className="w-8 h-11 bg-[#1e1e22] rounded shrink-0" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{card.name}</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <GameBadge game={card.game as "pokemon" | "onepiece" | "yugioh" | "mtg"} />
+                    </div>
                   </div>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-sm font-semibold">
-                    ¥{entry.latest_price?.toLocaleString()}
-                  </p>
-                  <PriceChange rate={entry.change_rate} size="sm" />
-                </div>
-              </Link>
-            </li>
-          ))}
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-semibold">
+                      ¥{entry.pred_1m.toLocaleString()}
+                    </p>
+                    <p className="text-xs font-semibold tabular-nums" style={{ color: accentColor }}>
+                      {type === "rise" ? "▲" : "▼"} {Math.abs(entry.change_1m).toFixed(1)}%
+                    </p>
+                  </div>
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

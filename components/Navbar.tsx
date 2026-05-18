@@ -8,8 +8,8 @@ import { cn } from "@/lib/utils";
 const links = [
   { href: "/", label: "ホーム", icon: BarChart2 },
   { href: "/search", label: "カード検索", icon: Search },
-  { href: "/ranking/rise", label: "高騰ランキング", icon: TrendingUp },
-  { href: "/ranking/fall", label: "暴落ランキング", icon: TrendingDown },
+  { href: "/ranking/rise", label: "高騰予測", icon: TrendingUp },
+  { href: "/ranking/fall", label: "暴落予測", icon: TrendingDown },
 ];
 
 export function Navbar() {
