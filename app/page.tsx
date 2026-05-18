@@ -53,7 +53,7 @@ export default async function HomePage() {
         </h1>
         <p className="text-[#9ca3af] max-w-xl mx-auto">
           ポケモン・ワンピース・遊戯王・MTGの価格を毎日自動収集。
-          AIが1週間後・1ヶ月後・1年後の価格を予測します。
+          過去データをもとに1週間後・1ヶ月後・1年後の参考価格を算出します。
         </p>
         <Link
           href="/search"

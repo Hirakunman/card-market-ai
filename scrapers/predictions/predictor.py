@@ -116,6 +116,21 @@ def apply_mean_reversion(current_price: int, base_price: int, trend_rate: float,
     return adjusted_rate
 
 
+def remove_outliers(prices: list[int]) -> list[int]:
+    """IQR法で外れ値を除去（フェイク高騰・誤入力対策）"""
+    if len(prices) < 4:
+        return prices
+    s = sorted(prices)
+    n = len(s)
+    q1 = s[n // 4]
+    q3 = s[(n * 3) // 4]
+    iqr = q3 - q1
+    lower = q1 - 2.0 * iqr
+    upper = q3 + 2.0 * iqr
+    filtered = [p for p in prices if lower <= p <= upper]
+    return filtered if len(filtered) >= 2 else prices
+
+
 def predict_card(card_id: str, game: str, rarity: Optional[str], price_history: list) -> dict:
     """
     1枚のカードの価格を予測する
@@ -125,7 +140,12 @@ def predict_card(card_id: str, game: str, rarity: Optional[str], price_history: 
     if not price_history:
         return None
 
-    current_price = price_history[0]["price"]
+    # 外れ値を除去してからトレンド計算（フェイク高騰・誤入力対策）
+    raw_prices = [p["price"] for p in price_history]
+    clean_prices = remove_outliers(raw_prices)
+
+    # クリーン後の最新価格を使用
+    current_price = clean_prices[0] if clean_prices else price_history[0]["price"]
     data_days = 0
 
     if len(price_history) >= 2:
@@ -202,10 +222,16 @@ def run_predictions(game: Optional[str] = None, limit: int = 5000) -> None:
 
     print(f"=== 価格予測開始 (game={game or 'all'}) ===")
 
-    # 価格データのあるカードIDを取得
-    prices_q = client.table("prices").select("card_id").limit(limit)
-    prices_res = prices_q.execute()
-    card_ids = list(set(p["card_id"] for p in prices_res.data))
+    # バグ修正: 同一カードの重複price行を除去して正しく distinct card_ids を取得
+    # 旧コードは limit(N) を price「行」に適用していたため、1カードに10行あると10行で埋まった
+    prices_res = (
+        client.table("prices")
+        .select("card_id")
+        .limit(limit * 30)   # 重複吸収のため多めに取得
+        .execute()
+    )
+    # dict.fromkeys で挿入順を維持しつつ重複排除
+    card_ids = list(dict.fromkeys(p["card_id"] for p in prices_res.data))[:limit]
     print(f"  価格データのあるカード: {len(card_ids)}枚")
 
     if not card_ids:
@@ -213,7 +239,7 @@ def run_predictions(game: Optional[str] = None, limit: int = 5000) -> None:
         return
 
     # カード情報を取得（ゲームフィルタ適用）
-    query = client.table("cards").select("id,game,rarity").in_("id", card_ids)
+    query = client.table("cards").select("id,game,rarity,set_name").in_("id", card_ids)
     if game:
         query = query.eq("game", game)
     cards_res = query.execute()

@@ -22,7 +22,7 @@ export default async function RiseRankingPage() {
         <div>
           <h1 className="text-2xl font-bold">高騰予測ランキング</h1>
           <p className="text-sm text-[#9ca3af]">
-            AIが価格上昇を予測しているカード TOP50 — 期間・並び順を切り替えられます
+            過去の価格推移から統計的に上昇が見込まれるカード TOP50 — 期間・並び順を変更できます
           </p>
         </div>
       </div>

@@ -22,7 +22,7 @@ export default async function FallRankingPage() {
         <div>
           <h1 className="text-2xl font-bold">暴落予測ランキング</h1>
           <p className="text-sm text-[#9ca3af]">
-            AIが価格下落を予測しているカード TOP50 — 期間・並び順を切り替えられます
+            過去の価格推移から統計的に下落が見込まれるカード TOP50 — 期間・並び順を変更できます
           </p>
         </div>
       </div>
