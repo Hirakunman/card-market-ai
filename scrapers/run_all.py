@@ -15,12 +15,22 @@ import argparse
 
 def run_prices():
     print("=== 価格スクレイピング開始 ===")
+
+    # 遊々亭（ショップ定価ベース・全ゲーム）
     from prices.yuyutei import scrape_game
     for game in ["pokemon", "yugioh", "onepiece"]:
         try:
             scrape_game(game)
         except Exception as e:
-            print(f"ERROR scraping {game}: {e}")
+            print(f"ERROR scraping {game} yuyutei: {e}")
+
+    # メルカリ（実際の取引価格）
+    try:
+        from prices.mercari import scrape_mercari_prices
+        scrape_mercari_prices(limit=100)
+    except Exception as e:
+        print(f"ERROR scraping mercari: {e}")
+
     print("=== 価格スクレイピング完了 ===")
 
     # 価格スクレイピング後に予測を更新

@@ -19,9 +19,21 @@ PLAYWRIGHT_BROWSERS_PATH = os.path.expanduser("~/.playwright-browsers")
 
 # 遊々亭のゲームコード対応表
 GAME_CONFIG = {
-    "pokemon": {"code": "poc", "game": "pokemon"},
+    "pokemon":  {"code": "poc", "game": "pokemon"},
     "onepiece": {"code": "opc", "game": "onepiece"},
-    "yugioh": {"code": "ygo", "game": "yugioh"},
+    "yugioh":   {"code": "ygo", "game": "yugioh"},
+}
+
+# YuGiOh レアリティ英語→日本語マッピング
+YGO_RARITY_JA = {
+    "N": "ノーマル", "R": "レア", "SR": "スーパーレア",
+    "UR": "ウルトラレア", "SE": "シークレットレア",
+    "PSE": "プリズマティックシークレットレア",
+    "20SE": "20thシークレットレア", "UTR": "アルティメットレア",
+    "GR": "ゴールドレア", "GS": "ゴーストレア",
+    "QCR": "クォーターセンチュリーシークレットレア",
+    "ER": "ウルトラレア（ER）", "KCR": "コレクターズレア",
+    "NPR": "ノーマルパラレルレア",
 }
 
 # 最近の重要セットのみに絞る（古いセットはスキップ）
@@ -61,8 +73,19 @@ def scrape_set_page(page, game_code: str, set_code: str) -> list:
 
     from bs4 import BeautifulSoup
     soup = BeautifulSoup(page.content(), "html.parser")
-    items = soup.select("div.card-product")
 
+    # セット名をページタイトルから取得（遊戯王は日本語セット名が含まれる）
+    page_set_name = set_code
+    title_tag = soup.find("title")
+    if title_tag:
+        title_text = title_tag.get_text()
+        # 「[BLZD] BLAZING DOMINION | ...」→ 「BLAZING DOMINION」
+        import re as _re
+        m = _re.match(r"\[[\w\-]+\]\s*(.+?)\s*\|", title_text)
+        if m:
+            page_set_name = m.group(1).strip()
+
+    items = soup.select("div.card-product")
     results = []
     for item in items:
         try:
@@ -86,19 +109,21 @@ def scrape_set_page(page, game_code: str, set_code: str) -> list:
             img_url = img_tag.get("src", "") if img_tag else ""
             img_alt = img_tag.get("alt", "") if img_tag else ""
 
-            # alt属性からレアリティ取得: "120/083 MUR メガゲッコウガex"
+            # alt属性からレアリティ取得: "BLZD-JP010 PSE 混絶獄神ヴィードリウム"
             rarity = ""
             if img_alt:
                 parts = img_alt.strip().split()
                 if len(parts) >= 2:
-                    rarity = parts[1]
+                    rarity_raw = parts[1]
+                    # YuGiOhのレアリティを日本語に変換
+                    rarity = YGO_RARITY_JA.get(rarity_raw, rarity_raw)
 
             results.append({
                 "name": name,
                 "price": price,
                 "image_url": img_url or None,
                 "rarity": rarity or None,
-                "set_name": set_code,
+                "set_name": page_set_name,
                 "card_no": card_no,
             })
         except Exception:
@@ -108,19 +133,36 @@ def scrape_set_page(page, game_code: str, set_code: str) -> list:
 
 
 def get_or_create_card(game: str, name: str, image_url=None, rarity=None, set_name="", card_no="") -> Optional[str]:
-    """カード名でDBを検索し、なければ日本語名で新規作成してIDを返す"""
+    """カード名でDBを検索し、なければ日本語名で新規作成してIDを返す。
+    遊々亭由来の日本語セット名・画像があれば既存カードも更新する。"""
     client = get_client()
 
     res = (
         client.table("cards")
-        .select("id")
+        .select("id,set_name,image_url")
         .eq("game", game)
         .ilike("name", name)
         .limit(1)
         .execute()
     )
     if res.data:
-        return res.data[0]["id"]
+        card = res.data[0]
+        card_id = card["id"]
+        # セット名が英語っぽい場合（遊戯王の古いデータ）は日本語に更新
+        update = {}
+        existing_set = card.get("set_name", "")
+        if set_name and set_name != existing_set:
+            # 英語っぽいセット名（アスキー文字のみ）を日本語に置き換える
+            is_english_set = bool(re.match(r'^[A-Za-z0-9\s\'\-\:\.]+$', existing_set))
+            if is_english_set or not existing_set:
+                update["set_name"] = set_name
+        if image_url and not card.get("image_url"):
+            update["image_url"] = image_url
+        if rarity:
+            update["rarity"] = rarity
+        if update:
+            client.table("cards").update(update).eq("id", card_id).execute()
+        return card_id
 
     # 新規作成
     ext_id = f"yuyutei_{game}_{re.sub(r'[^a-zA-Z0-9]', '_', name)[:40]}_{card_no[:10]}"
