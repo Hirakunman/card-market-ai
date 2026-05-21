@@ -7,7 +7,7 @@ import { Info } from "lucide-react";
 import { GameBadge } from "@/components/GameBadge";
 
 type Horizon = "1w" | "1m" | "1y";
-type SortKey = "rate" | "amount";
+type SortKey = "rate" | "amount" | "score";
 
 type PredEntry = {
   card_id: string;
@@ -20,6 +20,13 @@ type PredEntry = {
   change_1y: number;
   confidence: "low" | "medium" | "high";
   data_days: number;
+  rise_score?: number;
+  mercari_confirmed?: boolean;
+  card_insights?: {
+    mercari_surge?: boolean;
+    mercari_change_7d?: number;
+    reprint_risk?: string;
+  } | null;
   cards: {
     id: string;
     name: string;
@@ -49,7 +56,7 @@ const CONFIDENCE_DOT: Record<string, { color: string; label: string }> = {
 
 export function PredictionRankingTable({ entries, type }: Props) {
   const [horizon, setHorizon] = useState<Horizon>("1m");
-  const [sortKey, setSortKey] = useState<SortKey>("rate");
+  const [sortKey, setSortKey] = useState<SortKey>(type === "rise" ? "score" : "rate");
 
   const sorted = useMemo(() => {
     const changeKey = `change_${horizon}` as keyof PredEntry;
@@ -61,6 +68,9 @@ export function PredictionRankingTable({ entries, type }: Props) {
         return type === "rise" ? change > 0 : change < 0;
       })
       .sort((a, b) => {
+        if (sortKey === "score" && type === "rise") {
+          return (b.rise_score ?? 0) - (a.rise_score ?? 0);
+        }
         if (sortKey === "rate") {
           return Math.abs(b[changeKey] as number) - Math.abs(a[changeKey] as number);
         }
@@ -98,6 +108,19 @@ export function PredictionRankingTable({ entries, type }: Props) {
 
         {/* 並び替え */}
         <div className="flex rounded-lg border border-[#2a2a2e] overflow-hidden text-sm">
+          {type === "rise" && (
+            <button
+              onClick={() => setSortKey("score")}
+              className="flex-1 px-3 py-2 transition-colors text-center"
+              style={
+                sortKey === "score"
+                  ? { backgroundColor: "#1e1e22", color: "#f9fafb", fontWeight: 600 }
+                  : { backgroundColor: "#0d0d0f", color: "#9ca3af" }
+              }
+            >
+              信頼スコア
+            </button>
+          )}
           <button
             onClick={() => setSortKey("rate")}
             className="flex-1 px-3 py-2 transition-colors text-center"
@@ -159,6 +182,9 @@ export function PredictionRankingTable({ entries, type }: Props) {
                     {sortKey === "rate" ? "利益率" : "上昇幅"}
                   </th>
                   <th className="text-center px-3 py-3 text-[#9ca3af] font-medium w-16">精度</th>
+                  {type === "rise" && (
+                    <th className="text-center px-3 py-3 text-[#9ca3af] font-medium w-14">Score</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#2a2a2e]">
@@ -170,6 +196,17 @@ export function PredictionRankingTable({ entries, type }: Props) {
                   const changeAmt   = predPrice - entry.current_price;
                   const card        = entry.cards;
                   const dot         = CONFIDENCE_DOT[entry.confidence];
+                  const insight     = entry.card_insights;
+                  const badges      = (
+                    <span className="flex gap-1 mt-0.5">
+                      {entry.mercari_confirmed && (
+                        <span className="text-[10px] text-green-400">✓実売</span>
+                      )}
+                      {insight?.mercari_surge && (
+                        <span className="text-[10px] text-orange-400">🔥急騰</span>
+                      )}
+                    </span>
+                  );
 
                   return (
                     <tr key={entry.card_id} className="hover:bg-[#1a1a1e] transition-colors">
@@ -190,6 +227,7 @@ export function PredictionRankingTable({ entries, type }: Props) {
                               {card.rarity && (
                                 <span className="text-xs text-[#9ca3af] truncate">{card.rarity}</span>
                               )}
+                              {badges}
                             </div>
                           </div>
                         </Link>
@@ -210,6 +248,11 @@ export function PredictionRankingTable({ entries, type }: Props) {
                           ● {dot.label}
                         </span>
                       </td>
+                      {type === "rise" && (
+                        <td className="px-3 py-3 text-center font-bold text-xs tabular-nums text-green-400">
+                          {entry.rise_score ?? "—"}
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

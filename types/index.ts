@@ -66,6 +66,8 @@ export type Prediction = {
   change_1y: number;
   confidence: "low" | "medium" | "high";
   data_days: number;
+  rise_score?: number;
+  mercari_confirmed?: boolean;
   updated_at: string;
 };
 

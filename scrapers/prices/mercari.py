@@ -120,8 +120,11 @@ def update_mercari_insight(client, card_id: str, current_price: int) -> None:
         print(f"    ERROR mercari insight {card_id}: {e}")
 
 
-def scrape_mercari_prices(game: Optional[str] = None, limit: int = 100) -> None:
-    """メルカリ売却価格を収集し、急騰検知も行う"""
+from prices.mercari_targets import get_mercari_target_cards
+
+
+def scrape_mercari_prices(game: Optional[str] = None, limit: int = 200) -> None:
+    """メルカリ売却価格を収集し、急騰検知も行う（高額・急騰カード優先）"""
     client = get_client()
     os.environ["PLAYWRIGHT_BROWSERS_PATH"] = PLAYWRIGHT_BROWSERS_PATH
 
@@ -133,20 +136,8 @@ def scrape_mercari_prices(game: Optional[str] = None, limit: int = 100) -> None:
 
     print(f"\n=== メルカリ価格収集開始 (game={game or 'all'}) ===")
 
-    prices_res = (
-        client.table("prices")
-        .select("card_id")
-        .eq("source", "yuyutei")
-        .limit(limit * 5)
-        .execute()
-    )
-    card_ids = list(dict.fromkeys(p["card_id"] for p in prices_res.data))[:limit]
-
-    query = client.table("cards").select("id,name,game").in_("id", card_ids)
-    if game:
-        query = query.eq("game", game)
-    cards = query.execute().data or []
-    print(f"  対象カード: {len(cards)}枚")
+    cards = get_mercari_target_cards(game=game, limit=limit)
+    print(f"  対象カード: {len(cards)}枚（高額・急騰優先）")
 
     saved = 0
     surges = 0
@@ -190,7 +181,7 @@ def scrape_mercari_prices(game: Optional[str] = None, limit: int = 100) -> None:
             except Exception:
                 pass
 
-            time.sleep(5)
+            time.sleep(4)  # メルカリ負荷軽減（優先カード数増のため4秒）
 
             if saved % 20 == 0 and saved > 0:
                 print(f"  ... {saved}件保存")

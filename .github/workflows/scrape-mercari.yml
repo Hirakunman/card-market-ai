@@ -1,22 +1,16 @@
-name: 価格自動収集
+name: メルカリ重点収集（高騰精度向上）
 
 on:
-  # 毎朝6時・毎夜18時（JST = UTC+9）に自動実行
+  # JST 12:00 / 0:00 — 実売相場を1日3回更新
   schedule:
-    - cron: "0 21 * * *"  # JST 6:00
-    - cron: "0 9 * * *"   # JST 18:00
-  # 手動実行も可能
+    - cron: "0 3 * * *"   # JST 12:00
+    - cron: "0 15 * * *"  # JST 0:00
   workflow_dispatch:
-    inputs:
-      mode:
-        description: "実行モード (prices / cards / all)"
-        required: false
-        default: "prices"
 
 jobs:
-  scrape:
+  mercari:
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    timeout-minutes: 180
     defaults:
       run:
         working-directory: scrapers
@@ -37,10 +31,8 @@ jobs:
       - name: Playwright Chromium インストール
         run: playwright install chromium --with-deps
 
-      - name: 価格スクレイピング実行
+      - name: メルカリ重点収集 + 予測更新
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          MODE="${{ github.event.inputs.mode || 'prices' }}"
-          python run_all.py --mode "$MODE"
+        run: python run_all.py --mode mercari

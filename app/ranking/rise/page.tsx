@@ -2,15 +2,17 @@ import { TrendingUp } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { PredictionRankingTable } from "@/components/PredictionRankingTable";
 
-export const revalidate = 3600;
+export const revalidate = 1800; // 30分（高騰データはこまめに更新）
 export const metadata = { title: "高騰予測ランキング | CardMarket AI" };
 
 export default async function RiseRankingPage() {
   const { data } = await supabase
     .from("predictions")
-    .select("card_id,current_price,pred_1w,pred_1m,pred_1y,change_1w,change_1m,change_1y,confidence,data_days,cards(id,name,game,set_name,rarity,image_url)")
-    .or("change_1w.gt.0,change_1m.gt.0,change_1y.gt.0")
-    .order("change_1m", { ascending: false })
+    .select(
+      "card_id,current_price,pred_1w,pred_1m,pred_1y,change_1w,change_1m,change_1y,confidence,data_days,rise_score,mercari_confirmed,cards(id,name,game,set_name,rarity,image_url),card_insights(mercari_surge,mercari_change_7d,reprint_risk)"
+    )
+    .gt("rise_score", 5)
+    .order("rise_score", { ascending: false })
     .limit(200);
 
   const entries = (data ?? []) as Parameters<typeof PredictionRankingTable>[0]["entries"];
@@ -22,9 +24,14 @@ export default async function RiseRankingPage() {
         <div>
           <h1 className="text-2xl font-bold">高騰予測ランキング</h1>
           <p className="text-sm text-[#9ca3af]">
-            過去の価格推移から統計的に上昇が見込まれるカード TOP50 — 期間・並び順を変更できます
+            メルカリ実売・再販リスク・データ量を加味した信頼スコア順 — 精度の低い候補は自動除外
           </p>
         </div>
+      </div>
+
+      <div className="rounded-lg border border-[#2a2a2e] bg-[#141416] px-4 py-3 text-xs text-[#9ca3af] space-y-1">
+        <p>🔥 = メルカリ急騰確認済み　✓ = 実売データあり　スコア = 高騰信頼度（0〜100）</p>
+        <p>再販リスクが高いカードはスコアが自動的に下がり、ランキング上位に出にくくなります。</p>
       </div>
 
       <PredictionRankingTable entries={entries} type="rise" />

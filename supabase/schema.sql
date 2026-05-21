@@ -101,12 +101,20 @@ create table if not exists predictions (
   change_1y    numeric(6,1),
   confidence   text check (confidence in ('low', 'medium', 'high')) default 'low',
   data_days    integer default 0,
+  rise_score   numeric(6,1) default 0,
+  mercari_confirmed boolean default false,
   updated_at   timestamptz not null default now(),
   unique (card_id)
 );
 
 create index if not exists predictions_card_id on predictions(card_id);
 create index if not exists predictions_updated on predictions(updated_at desc);
+create index if not exists predictions_rise_score on predictions(rise_score desc);
+
+-- 既存DBへのカラム追加（安全に再実行可）
+alter table predictions add column if not exists rise_score numeric(6,1) default 0;
+alter table predictions add column if not exists mercari_confirmed boolean default false;
+create index if not exists predictions_rise_score_idx on predictions(rise_score desc);
 
 -- Row Level Security（公開データは全員読み取り可）
 alter table cards enable row level security;
