@@ -216,6 +216,53 @@ def predict_card(card_id: str, game: str, rarity: Optional[str], price_history: 
     }
 
 
+def apply_insights(prediction: dict, insights: Optional[dict]) -> dict:
+    """市場シグナル（メルカリ急騰・再販・PSA）を予測に反映"""
+    if not insights or not prediction:
+        return prediction
+
+    cur = prediction["current_price"]
+    c1w = prediction["change_1w"]
+    c1m = prediction["change_1m"]
+    c1y = prediction["change_1y"]
+
+    # メルカリ急騰 → 短期予測を上方修正（最大+15%）
+    if insights.get("mercari_surge") and insights.get("mercari_change_7d"):
+        boost = min(float(insights["mercari_change_7d"]) * 0.35, 15.0)
+        c1w += boost
+        c1m += boost * 0.4
+
+    # 再販リスク → 中長期予測を下方修正
+    risk = insights.get("reprint_risk", "none")
+    if risk == "high":
+        c1m -= 12.0
+        c1y -= 20.0
+    elif risk == "medium":
+        c1m -= 6.0
+        c1y -= 10.0
+    elif risk == "low":
+        c1m -= 2.0
+        c1y -= 4.0
+
+    # PSAプレミアム高 → 長期コレクター需要を反映
+    premium = insights.get("psa_premium_pct")
+    if premium and float(premium) > 150:
+        c1y += min(float(premium) * 0.02, 8.0)
+
+    def clamp(v, lo=-80.0, hi=80.0):
+        return max(lo, min(hi, v))
+
+    c1w, c1m, c1y = clamp(c1w), clamp(c1m), clamp(c1y)
+
+    prediction["change_1w"] = round(c1w, 1)
+    prediction["change_1m"] = round(c1m, 1)
+    prediction["change_1y"] = round(c1y, 1)
+    prediction["pred_1w"] = max(1, round(cur * (1 + c1w / 100)))
+    prediction["pred_1m"] = max(1, round(cur * (1 + c1m / 100)))
+    prediction["pred_1y"] = max(1, round(cur * (1 + c1y / 100)))
+    return prediction
+
+
 def run_predictions(game: Optional[str] = None, limit: int = 5000) -> None:
     """全カードの予測を計算してSupabaseに保存"""
     client = get_client()
@@ -273,6 +320,20 @@ def run_predictions(game: Optional[str] = None, limit: int = 5000) -> None:
         if not prediction:
             skipped += 1
             continue
+
+        # 市場インサイト（メルカリ急騰・PSA・再販）を反映
+        try:
+            insight_res = (
+                client.table("card_insights")
+                .select("*")
+                .eq("card_id", card_id)
+                .single()
+                .execute()
+            )
+            if insight_res.data:
+                prediction = apply_insights(prediction, insight_res.data)
+        except Exception:
+            pass
 
         # upsert（既存なら更新）
         prediction["updated_at"] = datetime.now(timezone.utc).isoformat()

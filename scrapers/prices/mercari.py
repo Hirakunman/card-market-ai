@@ -2,25 +2,20 @@
 メルカリ 価格スクレイパー
 
 取得対象：直近の「売り切れ」商品（実際の取引価格）
-URL: https://jp.mercari.com/search?keyword={カード名}&status=sold_out
-
-Playwright で JS レンダリングし、売却済み価格の中央値・平均値を取得する。
-1カードあたり検索1回、リクエスト間隔5秒以上。
-
-robots.txt: /search は Disallow なし → アクセス可
-利用規約的にはグレーゾーンのため、研究・参考目的のみ。
+急騰検知：7日以内の前回価格と比較し、15%以上上昇で mercari_surge フラグを立てる
 """
 
 import os
 import re
 import time
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 from utils.supabase_client import get_client
 
 PLAYWRIGHT_BROWSERS_PATH = os.path.expanduser("~/.playwright-browsers")
 SEARCH_BASE = "https://jp.mercari.com/search"
+SURGE_THRESHOLD = 15.0  # 15%以上で急騰フラグ
 
-# カードゲームごとにメルカリ検索に付加するフィルタキーワード
 GAME_KEYWORDS = {
     "pokemon":  "ポケモンカード",
     "onepiece": "ワンピースカード",
@@ -29,12 +24,22 @@ GAME_KEYWORDS = {
 }
 
 
-def search_sold_prices(page, card_name: str, game: str, max_items: int = 10) -> list[int]:
+def search_sold_prices(
+    page,
+    card_name: str,
+    game: str,
+    max_items: int = 10,
+    raw_keyword: bool = False,
+) -> list[int]:
     """カード名でメルカリの売り切れ商品を検索し、価格リストを返す"""
-    game_kw = GAME_KEYWORDS.get(game, "")
-    keyword = f"{card_name} {game_kw}".strip()
+    if raw_keyword:
+        keyword = card_name
+    else:
+        game_kw = GAME_KEYWORDS.get(game, "")
+        keyword = f"{card_name} {game_kw}".strip()
 
-    url = f"{SEARCH_BASE}?keyword={keyword}&status=sold_out&sort=created_time&order=desc"
+    from urllib.parse import quote
+    url = f"{SEARCH_BASE}?keyword={quote(keyword)}&status=sold_out&sort=created_time&order=desc"
     try:
         page.goto(url, timeout=25000)
         time.sleep(3)
@@ -46,13 +51,11 @@ def search_sold_prices(page, card_name: str, game: str, max_items: int = 10) -> 
     soup = BeautifulSoup(page.content(), "html.parser")
 
     prices = []
-
-    # メルカリの商品リスト: li[data-testid="item-cell"] または mer-item-thumbnail
     for item in soup.select('[data-testid="item-cell"], mer-item-thumbnail'):
         try:
             price_el = (
                 item.select_one('[data-testid="thumbnail-item-price"]')
-                or item.select_one('.price')
+                or item.select_one(".price")
                 or item.select_one('[class*="price"]')
             )
             if not price_el:
@@ -60,7 +63,7 @@ def search_sold_prices(page, card_name: str, game: str, max_items: int = 10) -> 
             price_text = re.sub(r"[^\d]", "", price_el.get_text())
             if price_text:
                 price = int(price_text)
-                if 100 <= price <= 10_000_000:  # 100円〜1000万円の範囲
+                if 100 <= price <= 10_000_000:
                     prices.append(price)
         except Exception:
             continue
@@ -78,13 +81,48 @@ def median_price(prices: list[int]) -> Optional[int]:
     return (s[n // 2 - 1] + s[n // 2]) // 2
 
 
-def scrape_mercari_prices(game: Optional[str] = None, limit: int = 100) -> None:
-    """
-    価格データのあるカードをSupabaseから取得し、メルカリで売却価格を検索して保存。
-    limit: 1回の実行で処理するカード数（APIレート制限対策）
-    """
-    client = get_client()
+def get_mercari_price_7d_ago(client, card_id: str) -> Optional[int]:
+    """7日前以前の最新メルカリ素体価格"""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    res = (
+        client.table("prices")
+        .select("price")
+        .eq("card_id", card_id)
+        .eq("source", "mercari")
+        .is_("grade", "null")
+        .lte("recorded_at", cutoff)
+        .order("recorded_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return res.data[0]["price"] if res.data else None
 
+
+def update_mercari_insight(client, card_id: str, current_price: int) -> None:
+    """メルカリ急騰情報を card_insights に保存"""
+    price_7d = get_mercari_price_7d_ago(client, card_id)
+    change_7d = None
+    surge = False
+
+    if price_7d and price_7d > 0:
+        change_7d = round((current_price - price_7d) / price_7d * 100, 1)
+        surge = change_7d >= SURGE_THRESHOLD
+
+    try:
+        client.table("card_insights").upsert({
+            "card_id": card_id,
+            "mercari_price": current_price,
+            "mercari_change_7d": change_7d,
+            "mercari_surge": surge,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }, on_conflict="card_id").execute()
+    except Exception as e:
+        print(f"    ERROR mercari insight {card_id}: {e}")
+
+
+def scrape_mercari_prices(game: Optional[str] = None, limit: int = 100) -> None:
+    """メルカリ売却価格を収集し、急騰検知も行う"""
+    client = get_client()
     os.environ["PLAYWRIGHT_BROWSERS_PATH"] = PLAYWRIGHT_BROWSERS_PATH
 
     try:
@@ -95,19 +133,23 @@ def scrape_mercari_prices(game: Optional[str] = None, limit: int = 100) -> None:
 
     print(f"\n=== メルカリ価格収集開始 (game={game or 'all'}) ===")
 
-    # 価格データのあるカードIDを取得
-    prices_res = client.table("prices").select("card_id").eq("source", "yuyutei").limit(limit * 3).execute()
-    card_ids = list(set(p["card_id"] for p in prices_res.data))
+    prices_res = (
+        client.table("prices")
+        .select("card_id")
+        .eq("source", "yuyutei")
+        .limit(limit * 5)
+        .execute()
+    )
+    card_ids = list(dict.fromkeys(p["card_id"] for p in prices_res.data))[:limit]
 
-    # カード情報を取得
     query = client.table("cards").select("id,name,game").in_("id", card_ids)
     if game:
         query = query.eq("game", game)
-    cards_res = query.limit(limit).execute()
-    cards = cards_res.data
+    cards = query.execute().data or []
     print(f"  対象カード: {len(cards)}枚")
 
     saved = 0
+    surges = 0
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
@@ -116,10 +158,7 @@ def scrape_mercari_prices(game: Optional[str] = None, limit: int = 100) -> None:
 
         for card in cards:
             card_id = card["id"]
-            card_name = card["name"]
-            game_key = card["game"]
-
-            prices = search_sold_prices(page, card_name, game_key, max_items=10)
+            prices = search_sold_prices(page, card["name"], card["game"], max_items=10)
 
             if not prices:
                 time.sleep(2)
@@ -137,17 +176,28 @@ def scrape_mercari_prices(game: Optional[str] = None, limit: int = 100) -> None:
                     "condition": "NM",
                 }).execute()
                 saved += 1
-            except Exception as e:
+                update_mercari_insight(client, card_id, med)
+                # 急騰カウント
+                insight_res = (
+                    client.table("card_insights")
+                    .select("mercari_surge")
+                    .eq("card_id", card_id)
+                    .single()
+                    .execute()
+                )
+                if insight_res.data and insight_res.data.get("mercari_surge"):
+                    surges += 1
+            except Exception:
                 pass
 
-            time.sleep(5)  # メルカリへの負荷軽減
+            time.sleep(5)
 
             if saved % 20 == 0 and saved > 0:
                 print(f"  ... {saved}件保存")
 
         browser.close()
 
-    print(f"  完了: {saved}件保存")
+    print(f"  完了: {saved}件保存, 急騰検知: {surges}件")
 
 
 if __name__ == "__main__":

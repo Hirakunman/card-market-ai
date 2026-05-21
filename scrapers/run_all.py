@@ -16,7 +16,7 @@ import argparse
 def run_prices():
     print("=== 価格スクレイピング開始 ===")
 
-    # 遊々亭（ショップ定価ベース・全ゲーム）
+    # 遊々亭（ショップ定価ベース）
     from prices.yuyutei import scrape_game
     for game in ["pokemon", "yugioh", "onepiece"]:
         try:
@@ -24,12 +24,32 @@ def run_prices():
         except Exception as e:
             print(f"ERROR scraping {game} yuyutei: {e}")
 
-    # メルカリ（実際の取引価格）
+    # メルカリ（実際の取引価格 + 急騰検知）
     try:
         from prices.mercari import scrape_mercari_prices
         scrape_mercari_prices(limit=100)
     except Exception as e:
         print(f"ERROR scraping mercari: {e}")
+
+    # PSA鑑定品のメルカリ相場
+    try:
+        from prices.psa_mercari import scrape_psa_prices
+        scrape_psa_prices(limit=50)
+    except Exception as e:
+        print(f"ERROR scraping psa: {e}")
+
+    # 再販情報収集 + リスク更新
+    try:
+        from events.reprints import sync_reprint_events
+        sync_reprint_events()
+    except Exception as e:
+        print(f"ERROR syncing reprints: {e}")
+
+    try:
+        from insights.updater import update_reprint_risks
+        update_reprint_risks()
+    except Exception as e:
+        print(f"ERROR updating reprint risks: {e}")
 
     print("=== 価格スクレイピング完了 ===")
 

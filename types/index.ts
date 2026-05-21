@@ -19,7 +19,33 @@ export type Price = {
   source: string;
   price: number;
   condition: "NM" | "LP" | "MP" | "HP" | "DMG" | null;
+  grade?: string | null;
   recorded_at: string;
+};
+
+export type CardInsight = {
+  card_id: string;
+  mercari_price: number | null;
+  mercari_change_7d: number | null;
+  mercari_surge: boolean;
+  psa10_price: number | null;
+  psa9_price: number | null;
+  psa_premium_pct: number | null;
+  reprint_risk: "none" | "low" | "medium" | "high";
+  reprint_title: string | null;
+  reprint_date: string | null;
+  updated_at: string;
+};
+
+export type ReprintEvent = {
+  id: string;
+  game: Game;
+  title: string;
+  set_name: string | null;
+  event_date: string;
+  source_url: string;
+  impact: "high" | "medium" | "low";
+  created_at: string;
 };
 
 export type CardWithLatestPrice = Card & {

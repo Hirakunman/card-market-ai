@@ -111,8 +111,46 @@ create index if not exists predictions_updated on predictions(updated_at desc);
 -- Row Level Security（公開データは全員読み取り可）
 alter table cards enable row level security;
 alter table prices enable row level security;
-
 alter table predictions enable row level security;
+
+-- PSAグレード対応（PSA10/PSA9 等）
+alter table prices add column if not exists grade text;
+
+-- 再販・追加生産カレンダー
+create table if not exists reprint_events (
+  id          uuid primary key default gen_random_uuid(),
+  game        text not null check (game in ('pokemon', 'onepiece', 'yugioh', 'mtg')),
+  title       text not null,
+  set_name    text,
+  event_date  date not null,
+  source_url  text not null,
+  impact      text check (impact in ('high', 'medium', 'low')) default 'medium',
+  created_at  timestamptz not null default now(),
+  unique (source_url)
+);
+
+create index if not exists reprint_events_game_date on reprint_events(game, event_date desc);
+
+-- カード別市場インサイト（メルカリ急騰・PSA・再販リスク）
+create table if not exists card_insights (
+  card_id           uuid primary key references cards(id) on delete cascade,
+  mercari_price     integer,
+  mercari_change_7d numeric(6,1),
+  mercari_surge     boolean default false,
+  psa10_price       integer,
+  psa9_price        integer,
+  psa_premium_pct   numeric(6,1),
+  reprint_risk      text check (reprint_risk in ('none', 'low', 'medium', 'high')) default 'none',
+  reprint_title     text,
+  reprint_date      date,
+  updated_at        timestamptz not null default now()
+);
+
+create index if not exists card_insights_surge on card_insights(mercari_surge) where mercari_surge = true;
+create index if not exists card_insights_reprint on card_insights(reprint_risk);
+
+alter table reprint_events enable row level security;
+alter table card_insights enable row level security;
 
 do $$ begin
   if not exists (select 1 from pg_policies where tablename = 'cards' and policyname = 'cards are public') then
@@ -123,5 +161,11 @@ do $$ begin
   end if;
   if not exists (select 1 from pg_policies where tablename = 'predictions' and policyname = 'predictions are public') then
     create policy "predictions are public" on predictions for select using (true);
+  end if;
+  if not exists (select 1 from pg_policies where tablename = 'reprint_events' and policyname = 'reprint_events are public') then
+    create policy "reprint_events are public" on reprint_events for select using (true);
+  end if;
+  if not exists (select 1 from pg_policies where tablename = 'card_insights' and policyname = 'card_insights are public') then
+    create policy "card_insights are public" on card_insights for select using (true);
   end if;
 end $$;

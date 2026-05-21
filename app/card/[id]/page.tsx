@@ -9,6 +9,8 @@ import { GameBadge } from "@/components/GameBadge";
 import { PriceChange } from "@/components/PriceChange";
 import { PriceChart } from "@/components/PriceChart";
 import { PricePrediction } from "@/components/PricePrediction";
+import { MarketInsights } from "@/components/MarketInsights";
+import type { CardInsight } from "@/types";
 
 export const revalidate = 3600;
 
@@ -40,13 +42,22 @@ async function getPrediction(cardId: string): Promise<Prediction | null> {
   return data;
 }
 
+async function getCardInsight(cardId: string): Promise<CardInsight | null> {
+  const { data } = await supabase
+    .from("card_insights")
+    .select("*")
+    .eq("card_id", cardId)
+    .single();
+  return data;
+}
+
 async function getPrices(cardId: string, days = 90): Promise<Price[]> {
   const from = new Date();
   from.setDate(from.getDate() - days);
 
   const { data } = await supabase
     .from("prices")
-    .select("id,card_id,source,price,condition,recorded_at")
+    .select("id,card_id,source,price,condition,grade,recorded_at")
     .eq("card_id", cardId)
     .gte("recorded_at", from.toISOString())
     .order("recorded_at", { ascending: true });
@@ -92,10 +103,11 @@ export default async function CardDetailPage({
   params: Promise<Params>;
 }) {
   const { id } = await params;
-  const [card, prices, prediction] = await Promise.all([
+  const [card, prices, prediction, insight] = await Promise.all([
     getCard(id),
     getPrices(id),
     getPrediction(id),
+    getCardInsight(id),
   ]);
 
   if (!card) notFound();
@@ -191,6 +203,9 @@ export default async function CardDetailPage({
         <PriceChart prices={prices} />
       </div>
 
+      {/* 市場シグナル（メルカリ・PSA・再販） */}
+      <MarketInsights insight={insight} />
+
       {/* 価格予測 */}
       <PricePrediction prediction={prediction} />
 
@@ -227,7 +242,7 @@ export default async function CardDetailPage({
                       ¥{p.price.toLocaleString()}
                     </td>
                     <td className="px-4 py-2 text-right text-[#9ca3af] whitespace-nowrap">
-                      {p.source}
+                      {p.source}{p.grade ? ` (${p.grade})` : ""}
                     </td>
                   </tr>
                 ))}
