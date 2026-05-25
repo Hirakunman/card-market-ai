@@ -205,7 +205,6 @@ def apply_insights(prediction: dict, insights: Optional[dict]) -> dict:
 
 
 def finalize_rise_score(prediction: dict, insights: Optional[dict]) -> dict:
-    """rise_score を算出して prediction に付与"""
     ins = insights or {}
     prediction["rise_score"] = calc_rise_score(
         change_1w=prediction["change_1w"],
@@ -220,6 +219,26 @@ def finalize_rise_score(prediction: dict, insights: Optional[dict]) -> dict:
     prediction.pop("_rise_inputs", None)
     prediction.pop("momentum_7d", None)
     return prediction
+
+
+def _safe_upsert_prediction(client, prediction: dict) -> bool:
+    """DBカラム未追加時も保存できるようフォールバック付きupsert"""
+    payload = {k: v for k, v in prediction.items() if not k.startswith("_")}
+
+    for attempt in range(2):
+        try:
+            client.table("predictions").upsert(payload, on_conflict="card_id").execute()
+            return True
+        except Exception as e:
+            err = str(e)
+            if attempt == 0 and ("mercari_confirmed" in err or "rise_score" in err):
+                payload.pop("mercari_confirmed", None)
+                payload.pop("rise_score", None)
+                print("  WARN: rise_score列未作成 → 基本予測のみ保存")
+                continue
+            print(f"    ERROR saving {prediction.get('card_id')}: {e}")
+            return False
+    return False
 
 
 def run_predictions(game: Optional[str] = None, limit: int = 5000) -> None:
@@ -286,11 +305,10 @@ def run_predictions(game: Optional[str] = None, limit: int = 5000) -> None:
         prediction = finalize_rise_score(prediction, insights)
         prediction["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-        try:
-            client.table("predictions").upsert(prediction, on_conflict="card_id").execute()
-            saved += 1
-        except Exception as e:
-            print(f"    ERROR saving {card_id}: {e}")
+        if not _safe_upsert_prediction(client, prediction):
+            skipped += 1
+            continue
+        saved += 1
 
         if saved % 100 == 0 and saved > 0:
             print(f"  ... {saved} 件保存済み")
