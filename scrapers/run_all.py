@@ -11,8 +11,17 @@ GitHub Actions cron から呼ばれるエントリーポイント
 import argparse
 
 
+def _run_migrations():
+    try:
+        from migrations.apply import apply_migrations
+        apply_migrations()
+    except Exception as e:
+        print(f"WARN migrations: {e}")
+
+
 def run_mercari():
     """メルカリ重点モード（1日3回実行用・高速）"""
+    _run_migrations()
     print("=== メルカリ重点収集 ===")
     try:
         from prices.mercari import scrape_mercari_prices
@@ -29,6 +38,7 @@ def run_mercari():
 
 
 def run_prices():
+    _run_migrations()
     print("=== 価格スクレイピング開始 ===")
 
     from prices.yuyutei import scrape_game
