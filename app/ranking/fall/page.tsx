@@ -2,7 +2,7 @@ import { TrendingDown } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { PredictionRankingTable } from "@/components/PredictionRankingTable";
 
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 export const metadata = { title: "暴落予測ランキング | CardMarket AI" };
 
 export default async function FallRankingPage() {

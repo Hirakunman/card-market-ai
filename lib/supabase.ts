@@ -1,11 +1,22 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
+// Vercel等で env 未設定でも公開読み取りできるよう anon key をフォールバック
+const DEFAULT_SUPABASE_URL = "https://nnnkheowtkmbomjpsfji.supabase.co";
+const DEFAULT_SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ubmtoZW93dGttYm9tanBzZmppIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4Mjk1MjEsImV4cCI6MjA5NDQwNTUyMX0.Ej2T1jWIGOiG0pOz_JPHKS1YGklVnvYDa3UWzXgmLUw";
+
 let _client: SupabaseClient | null = null;
 
 function getClientOrNull(): SupabaseClient | null {
   if (_client) return _client;
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const url =
+    process.env.NEXT_PUBLIC_SUPABASE_URL ??
+    process.env.SUPABASE_URL ??
+    DEFAULT_SUPABASE_URL;
+  const key =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+    process.env.SUPABASE_SERVICE_ROLE_KEY ??
+    DEFAULT_SUPABASE_ANON_KEY;
   if (!url || !key) return null;
   _client = createClient(url, key);
   return _client;

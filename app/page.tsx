@@ -3,7 +3,7 @@ import { TrendingUp, TrendingDown, Search, BarChart2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { GameBadge } from "@/components/GameBadge";
 
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 type PredEntry = {
   card_id: string;
@@ -35,6 +35,8 @@ async function getTopPredictions() {
       .order("change_1m", { ascending: true })
       .limit(5),
   ]);
+  if (riseRes.error) console.error("home rise error:", riseRes.error.message);
+  if (fallRes.error) console.error("home fall error:", fallRes.error.message);
   return {
     rise: (riseRes.data ?? []) as PredEntry[],
     fall: (fallRes.data ?? []) as PredEntry[],
